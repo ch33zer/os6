@@ -19,6 +19,9 @@
 #define IDE_CMD_READ  0x20
 #define IDE_CMD_WRITE 0x30
 
+#define IDE_PRIMARY_BUS 1
+#define IDE_SECONDARY_BUS 0
+
 // idequeue points to the buf now being read/written to the disk.
 // idequeue->qnext points to the next buf to be processed.
 // You must hold idelock while manipulating queue.
@@ -27,15 +30,22 @@ static struct spinlock idelock;
 static struct buf *idequeue;
 
 static int havedisk1;
+static int havedisk2;
+static int havedisk3;
 static void idestart(struct buf*);
+
+static int getStatusPort(int bus) {
+  return (bus == (IDE_PRIMARY_BUS))? 0x1f7: 0x177;
+  
+}
 
 // Wait for IDE disk to become ready.
 static int
-idewait(int checkerr)
+idewait(int checkerr, int bus)
 {
   int r;
 
-  while(((r = inb(0x1f7)) & (IDE_BSY|IDE_DRDY)) != IDE_DRDY) 
+  while(((r = inb(getStatusPort(bus))) & (IDE_BSY|IDE_DRDY)) != IDE_DRDY) 
     ;
   if(checkerr && (r & (IDE_DF|IDE_ERR)) != 0)
     return -1;
@@ -50,16 +60,52 @@ ideinit(void)
   initlock(&idelock, "ide");
   picenable(IRQ_IDE);
   ioapicenable(IRQ_IDE, ncpu - 1);
-  idewait(0);
+  idewait(0,IDE_PRIMARY_BUS);
   
   // Check if disk 1 is present
-  outb(0x1f6, 0xe0 | (1<<4));
+  outb(0x1f6, 0xe0 | (1<<4)); //Send to primary channel (go to second disk)
+  //IRQ secondary: 15
   for(i=0; i<1000; i++){
     if(inb(0x1f7) != 0){
       havedisk1 = 1;
       break;
     }
   }
+  // cprintf("Have 1: %d, Have 2: %d, Have 3: %d\n",havedisk1,havedisk2,havedisk3);
+
+  // outb(0x176, 0xe0 | (0<<4)); //Send to second channel (go to first disk) 
+  // //IRQ secondary: 15
+  // for(i=0; i<1000; i++){
+  //   if(inb(0x177) != 0){
+  //     havedisk2 = 1;
+  //     break;
+  //   }
+  // }
+
+  // cprintf("Have 1: %d, Have 2: %d, Have 3: %d\n",havedisk1,havedisk2,havedisk3);
+
+  // if (havedisk2) {
+  //   cprintf("Enabled after 2\n");
+  //   picenable(IRQ_IDE2);
+  //   ioapicenable(IRQ_IDE2, ncpu - 1);
+  //   idewait(0,IDE_SECONDARY_BUS);
+  // }
+
+  outb(0x176, 0xe0 | (1<<4)); //Send to second channel (go to second disk), 176 
+  //IRQ secondary: 15
+  for(i=0; i<1000; i++){
+    if(inb(0x177) != 0){
+      havedisk3 = 1;
+      break;
+    }
+  }
+  if (!havedisk2 && havedisk3) {
+    cprintf("Enabled after 3\n");
+    picenable(IRQ_IDE2);
+    ioapicenable(IRQ_IDE2, ncpu - 1);
+    idewait(0,IDE_SECONDARY_BUS);
+  }
+  cprintf("Have 1: %d, Have 2: %d, Have 3: %d\n",havedisk1,havedisk2,havedisk3);
   
   // Switch back to disk 0.
   outb(0x1f6, 0xe0 | (0<<4));
@@ -72,7 +118,7 @@ idestart(struct buf *b)
   if(b == 0)
     panic("idestart");
 
-  idewait(0);
+  idewait(0, IDE_PRIMARY_BUS);
   outb(0x3f6, 0);  // generate interrupt
   outb(0x1f2, 1);  // number of sectors
   outb(0x1f3, b->sector & 0xff);
@@ -103,7 +149,7 @@ ideintr(void)
   idequeue = b->qnext;
 
   // Read data if needed.
-  if(!(b->flags & B_DIRTY) && idewait(1) >= 0)
+  if(!(b->flags & B_DIRTY) && idewait(1,IDE_PRIMARY_BUS) >= 0)
     insl(0x1f0, b->data, 512/4);
   
   // Wake process waiting for this buf.
