@@ -67,8 +67,16 @@ kfree(char *v, int swappable,pte_t* expected_pte)
   uint idx = v2p(v)/PGSIZE;
   uint diskslot;
 
-  if((uint)v % PGSIZE || v < end || v2p(v) >= PHYSTOP)
+  if((uint)v % PGSIZE || v < end || v2p(v) >= PHYSTOP){
+		cprintf("Panic imminent, details: va 0x%x, v2p 0x%x\n",v,v2p(v));
+		if(v < end)
+			cprintf("v 0x%x < end 0x%x\n",v,end);
+		if(v2p(v) >= PHYSTOP)
+			cprintf("v2p(v) 0x%x >= PHYSTOP 0x%x\n", v2p(v),PHYSTOP);
+		if((uint)v % PGSIZE)
+			cprintf("v 0x%x % PGSIZE 0x%x is not 0\n", v,PGSIZE);
     panic("kfree");
+	}
   if (swappable) {
     if (owner[idx] == PG_UNOWNED) {
       panic("Freeing an unowned page");
@@ -119,6 +127,7 @@ kalloc(int swappable)
       release(&kmem.lock);
     return (char*)r;
   }
+
   else { //If it is
     if(kmem.use_lock)
       acquire(&kmem.lock);
@@ -130,9 +139,12 @@ kalloc(int swappable)
       }
       scnodeenqueue(r); //Page is eligible for swapping by being in the queue
     }
+
     else { //TODO MAKE SURE THAT THE DISK ISN'T FULL OF PAGES
       toevict = choosepageforeviction();
       ondiskindex = evict(toevict);
+
+			//Setting flags and swap index
       *(owner[v2p(toevict)/PGSIZE]) &= (0xFFF);
       *(owner[v2p(toevict)/PGSIZE]) |= (ondiskindex<<12);
       disown(toevict);

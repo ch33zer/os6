@@ -74,7 +74,7 @@ LD = $(TOOLPREFIX)ld
 OBJCOPY = $(TOOLPREFIX)objcopy
 OBJDUMP = $(TOOLPREFIX)objdump
 #MB's
-TOTALMAIN := 128
+TOTALMAIN := 128 
 TOTALSWAP := 1
 #Bytes
 TOTALMAINBYTES := $(shell expr $(TOTALMAIN) \* 1024 \* 1024)
@@ -186,6 +186,7 @@ UPROGS=\
 	_usertests\
 	_wc\
 	_zombie\
+	_swaptest\
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
@@ -255,7 +256,7 @@ qemu-nox-gdb: fs.img xv6.img swap.img .gdbinit
 EXTRA=\
 	mkfs.c ulib.c user.h cat.c echo.c forktest.c grep.c kill.c\
 	ln.c ls.c mkdir.c rm.c stressfs.c usertests.c wc.c zombie.c\
-	printf.c umalloc.c\
+	printf.c umalloc.c swaptest.c\
 	README dot-bochsrc *.pl toc.* runoff runoff1 runoff.list\
 	.gdbinit.tmpl gdbutil\
 

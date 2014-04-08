@@ -17,6 +17,7 @@ static struct freeswapnode* swaphead;
 
 static struct freeswapnode swapmemory[SWAPPGCAPACITY];
 
+//Initialize swap data structures
 void
 swapinit() {
 	// Setup disk free structure
@@ -25,6 +26,7 @@ swapinit() {
 	int i;
 	swaphead = &(swapmemory[0]);
 	curr = swaphead;
+	cprintf("Initializing freeswap with %d pages\n",SWAPPGCAPACITY);
 	for (i = 1; i < SWAPPGCAPACITY; i++) {
 		curr->index = i - 1;
 		next = &(swapmemory[i]);
@@ -63,6 +65,10 @@ choosepageforeviction(void) {
 		curr = schead.next;
 	}
 
+	// Remove from list
+	schead.next = curr->next;
+	curr->next->prev = &schead;
+
 	return p2v(curr->index * PGSIZE); // This is the virtual address of the page that will be evicted
 }
 
@@ -79,6 +85,7 @@ scnodeenqueue(void* va) {
 
 void
 scnoderemove(void* va) {
+	cprintf(".");
 	uint idx = v2p(va)/PGSIZE;
 	struct scnode* slot = &(nodememory[idx]);
 	struct scnode* prev = slot->prev;
@@ -89,6 +96,7 @@ scnoderemove(void* va) {
 
 struct freeswapnode*
 freeswapalloc(void) {
+	cprintf("freeswapalloc()\n");
 	struct freeswapnode* node;
 	if (swaphead) {
 		node = swaphead;
@@ -102,16 +110,20 @@ freeswapalloc(void) {
 
 void
 freeswapfree(uint index) {
+	cprintf("freeswapfree()\n");
 	struct freeswapnode* node;
 	node = &(swapmemory[index]);
 	node->next = swaphead;
 	swaphead = node;
 }
 
+
 struct freeswapnode*
 getfreenode() {
 	if (!swaphead) {
 		panic("Out of memory and swap pages");
+		//The standard behavior in this scenario is to kill the process.
+		//Otherwise sbrk tests fail. 
 	}
 	struct freeswapnode* node = swaphead;
 	swaphead = swaphead->next;
@@ -122,10 +134,14 @@ uint
 evict(char* pgsrc) {
 	struct freeswapnode* node = getfreenode();
 	uint idx = node->index;
+	cprintf("Evicting page idx %d\n",idx);
 	writepg(pgsrc, idx * PGSIZE / BSIZE);
+	
 	return idx;
 }
 
+
+//Called by trap.c
 void
 segflthandler() {
 	uint cr2 = PGROUNDDOWN(rcr2());
