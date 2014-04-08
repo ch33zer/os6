@@ -12,7 +12,7 @@
 
 void freerange(void *vstart, void *vend);
 extern char end[]; // first address after kernel loaded from ELF file
-static pte_t* owner[MEMORYPGCAPACITY];
+pte_t* owner[MEMORYPGCAPACITY];
 
 
 
@@ -52,7 +52,7 @@ freerange(void *vstart, void *vend)
   char *p;
   p = (char*)PGROUNDUP((uint)vstart);
   for(; p + PGSIZE <= (char*)vend; p += PGSIZE)
-    kfree(p);
+    kfree(p, 0, 0);
 }
 
 //PAGEBREAK: 21
@@ -61,13 +61,29 @@ freerange(void *vstart, void *vend)
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
 void
-kfree(char *v)
+kfree(char *v, int swappable,pte_t* expected_pte)
 {
   struct run *r;
+  uint idx = v2p(v)/PGSIZE;
+  uint diskslot;
 
   if((uint)v % PGSIZE || v < end || v2p(v) >= PHYSTOP)
     panic("kfree");
-
+  if (swappable) {
+    if (owner[idx] == PG_UNOWNED) {
+      panic("Freeing an unowned page");
+    }
+    pte_t* pte = owner[v2p(v)/PGSIZE];
+    if (expected_pte == pte) {
+      disown(v);
+      scnoderemove(v);
+    }
+    else {
+      cprintf("PTE DIFFERS\n");
+      diskslot = ((uint)*expected_pte) >> 12;
+      freeswapfree(diskslot);
+    }
+  }
   // Fill with junk to catch dangling refs.
   memset(v, 1, PGSIZE);
 
@@ -87,15 +103,45 @@ char*
 kalloc(int swappable)
 {
   struct run *r;
-
-  if(kmem.use_lock)
-    acquire(&kmem.lock);
-  r = kmem.freelist;
-  if(r)
-    kmem.freelist = r->next;
-  if(kmem.use_lock)
-    release(&kmem.lock);
-  return (char*)r;
+  char* toevict;
+  uint ondiskindex;
+  if (!swappable) { //If this page is not eligible for swapping
+    if(kmem.use_lock)
+      acquire(&kmem.lock);
+    r = kmem.freelist;
+    if(r) {
+      kmem.freelist = r->next;
+      if (owner[v2p(r)/PGSIZE] != PG_UNOWNED) {
+        panic("Alloc an owned page");
+      }
+    }
+    if(kmem.use_lock)
+      release(&kmem.lock);
+    return (char*)r;
+  }
+  else { //If it is
+    if(kmem.use_lock)
+      acquire(&kmem.lock);
+    r = kmem.freelist;
+    if(r) {
+      kmem.freelist = r->next;
+      if (owner[v2p(r)/PGSIZE] != PG_UNOWNED) {
+        panic("Alloc an owned page");
+      }
+      scnodeenqueue(r); //Page is eligible for swapping by being in the queue
+    }
+    else { //TODO MAKE SURE THAT THE DISK ISN'T FULL OF PAGES
+      toevict = choosepageforeviction();
+      ondiskindex = evict(toevict);
+      *(owner[v2p(toevict)/PGSIZE]) &= (0xFFF);
+      *(owner[v2p(toevict)/PGSIZE]) |= (ondiskindex<<12);
+      disown(toevict);
+      r = (struct run*)toevict;
+    }
+    if(kmem.use_lock)
+      release(&kmem.lock);
+    return (char*)r;
+  }
 }
 
 

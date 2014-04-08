@@ -191,3 +191,34 @@ iderw(struct buf *b)
 
   release(&idelock);
 }
+
+void writepg(char* src, uint block) {
+  cprintf("Starting swap write\n");
+  int status = getstatusport(SWAPDEV);
+  int baseaddr = getbaseport(SWAPDEV);
+  idewait(0,SWAPDEV);
+  outb(status, 1);  // don't generate interrupt 
+  outb(baseaddr + IDE_PORT_SECTORS, 8);  // number of sectors
+  outb(baseaddr + IDE_PORT_LBALOW, block & 0xff);
+  outb(baseaddr + IDE_PORT_LBAMID, (block >> 8) & 0xff);
+  outb(baseaddr + IDE_PORT_LBAHI, (block >> 16) & 0xff);
+  outb(baseaddr + IDE_PORT_DRIVE, 0xe0 | ((SWAPDEV&1)<<4) | ((block>>24)&0x0f));
+  outb(baseaddr + IDE_PORT_COMMAND, IDE_CMD_WRITE);
+  outsl(baseaddr + IDE_PORT_DATA, src, PGSIZE/4);
+}
+
+void readpg(char* dest, uint block) {
+  cprintf("Starting swap read dest %p block %d\n", dest, block);
+  int status = getstatusport(SWAPDEV);
+  int baseaddr = getbaseport(SWAPDEV);
+  idewait(0,SWAPDEV);
+  outb(status, 1);  // don't generate interrupt 
+  outb(baseaddr + IDE_PORT_SECTORS, 8);  // number of sectors
+  outb(baseaddr + IDE_PORT_LBALOW, block & 0xff);
+  outb(baseaddr + IDE_PORT_LBAMID, (block >> 8) & 0xff);
+  outb(baseaddr + IDE_PORT_LBAHI, (block >> 16) & 0xff);
+  outb(baseaddr + IDE_PORT_DRIVE, 0xe0 | ((SWAPDEV&1)<<4) | ((block>>24)&0x0f));
+  outb(baseaddr + IDE_PORT_COMMAND, IDE_CMD_READ);
+  idewait(0,SWAPDEV);
+  insl(getbaseport(SWAPDEV) + IDE_PORT_DATA, dest, PGSIZE/4);
+}

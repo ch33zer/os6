@@ -7,6 +7,7 @@ struct proc;
 struct spinlock;
 struct stat;
 struct superblock;
+struct freeswapnode;
 
 // bio.c
 void            binit(void);
@@ -55,6 +56,8 @@ int             writei(struct inode*, char*, uint, uint);
 void            ideinit(void);
 void            ideintr(void);
 void            iderw(struct buf*);
+void			writepg(char*, uint);
+void 			readpg(char*, uint);
 
 // ioapic.c
 void            ioapicenable(int irq, int cpu);
@@ -62,8 +65,9 @@ extern uchar    ioapicid;
 void            ioapicinit(void);
 
 // kalloc.c
+extern pte_t* 	owner[];
 char*           kalloc(int);
-void            kfree(char*);
+void            kfree(char*,int,pte_t*);
 void            kinit1(void*, void*);
 void            kinit2(void*, void*);
 void			own(char*, pte_t*);
@@ -119,6 +123,16 @@ int             wait(void);
 void            wakeup(void*);
 void            yield(void);
 
+// swap.c
+void			segflthandler(void);
+void			swapinit(void);
+void			scnodeenqueue(void*);
+void			scnoderemove(void*);
+struct freeswapnode*	freeswapalloc(void);
+void			freeswapfree(uint);
+char*			choosepageforeviction(void);
+uint			evict(char*);
+
 // swtch.S
 void            swtch(struct context**, struct context*);
 
@@ -163,6 +177,8 @@ void            uartintr(void);
 void            uartputc(int);
 
 // vm.c
+pte_t* 			walkpgdir(pde_t*,const void*, int);
+int 			mappages(pde_t*, void*, uint, uint, int);
 void            seginit(void);
 void            kvmalloc(void);
 void            vmenable(void);
