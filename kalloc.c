@@ -8,9 +8,13 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "spinlock.h"
+#include "swap.h"
 
 void freerange(void *vstart, void *vend);
 extern char end[]; // first address after kernel loaded from ELF file
+static pte_t* owner[MEMORYPGCAPACITY];
+
+
 
 struct run {
   struct run *next;
@@ -80,7 +84,7 @@ kfree(char *v)
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
 char*
-kalloc(void)
+kalloc(int swappable)
 {
   struct run *r;
 
@@ -94,3 +98,12 @@ kalloc(void)
   return (char*)r;
 }
 
+
+void
+own(char* va, pte_t* pte) {
+  owner[v2p(va)/PGSIZE] = pte;
+}
+
+void disown(char* va) {
+  owner[v2p(va)/PGSIZE] = PG_UNOWNED;
+}

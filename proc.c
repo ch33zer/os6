@@ -50,7 +50,7 @@ found:
   release(&ptable.lock);
 
   // Allocate kernel stack.
-  if((p->kstack = kalloc()) == 0){
+  if((p->kstack = kalloc(0)) == 0){ //TODO: allow this to be swapped?
     p->state = UNUSED;
     return 0;
   }

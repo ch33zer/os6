@@ -62,10 +62,12 @@ extern uchar    ioapicid;
 void            ioapicinit(void);
 
 // kalloc.c
-char*           kalloc(void);
+char*           kalloc(int);
 void            kfree(char*);
 void            kinit1(void*, void*);
 void            kinit2(void*, void*);
+void			own(char*, pte_t*);
+void			disown(char*);
 
 // kbd.c
 void            kbdintr(void);

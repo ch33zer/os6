@@ -17,6 +17,7 @@ OBJS = \
 	proc.o\
 	spinlock.o\
 	string.o\
+	swap.o\
 	swtch.o\
 	syscall.o\
 	sysfile.o\
@@ -72,12 +73,27 @@ AS = $(TOOLPREFIX)gas
 LD = $(TOOLPREFIX)ld
 OBJCOPY = $(TOOLPREFIX)objcopy
 OBJDUMP = $(TOOLPREFIX)objdump
+#MB's
+TOTALMAIN := 256
+TOTALSWAP := 128
+#Bytes
+TOTALMAINBYTES := $(shell expr $(TOTALMAIN) \* 1024 \* 1024)
+TOTALSWAPBYTES := $(shell expr $(TOTALSWAP) \* 1024 \* 1024)
+#Blocks
+TOTALMAINBLOCKS := $(shell expr $(TOTALMAINBYTES) / 512)
+TOTALSWAPBLOCKS := $(shell expr $(TOTALSWAPBYTES) / 512)
 #CFLAGS = -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer
 CFLAGS = -fno-pic -static -fno-builtin -fno-strict-aliasing -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
+CFLAGS += -DTOTALMAIN="$(TOTALMAIN)" -DTOTALSWAP="$(TOTALSWAP)"
+CFLAGS += -DTOTALMAINBYTES="$(TOTALMAINBYTES)" -DTOTALSWAPBYTES="$(TOTALSWAPBYTES)"
+CFLAGS += -DTOTALMAINBLOCKS="$(TOTALMAINBLOCKS)" -DTOTALSWAPBLOCKS="$(TOTALSWAPBLOCKS)"
 ASFLAGS = -m32 -gdwarf-2 -Wa,-divide
 # FreeBSD ld wants ``elf_i386_fbsd''
 LDFLAGS += -m $(shell $(LD) -V | grep elf_i386 2>/dev/null)
+
+swap.img:
+	dd if=/dev/zero of=swap.img count=$(TOTALSWAPBLOCKS)
 
 xv6.img: bootblock kernel fs.img
 	dd if=/dev/zero of=xv6.img count=10000
@@ -179,7 +195,7 @@ fs.img: mkfs README $(UPROGS)
 clean: 
 	rm -f *.tex *.dvi *.idx *.aux *.log *.ind *.ilg \
 	*.o *.d *.asm *.sym vectors.S bootblock entryother \
-	initcode initcode.out kernel xv6.img fs.img kernelmemfs mkfs \
+	initcode initcode.out kernel xv6.img fs.img swap.img kernelmemfs mkfs \
 	.gdbinit \
 	$(UPROGS)
 
@@ -208,25 +224,25 @@ QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
 ifndef CPUS
 CPUS := 1
 endif
-QEMUOPTS = -hdb fs.img xv6.img -smp $(CPUS) -m 512 $(QEMUEXTRA)
+QEMUOPTS = -hdb fs.img -hdd swap.img xv6.img -smp $(CPUS) -m 512 $(QEMUEXTRA)
 
-qemu: fs.img xv6.img
+qemu: fs.img xv6.img swap.img
 	$(QEMU) -serial mon:stdio $(QEMUOPTS)
 
 qemu-memfs: xv6memfs.img
 	$(QEMU) xv6memfs.img -smp $(CPUS)
 
-qemu-nox: fs.img xv6.img
+qemu-nox: fs.img xv6.img swap.img
 	$(QEMU) -nographic $(QEMUOPTS)
 
 .gdbinit: .gdbinit.tmpl
 	sed "s/localhost:1234/localhost:$(GDBPORT)/" < $^ > $@
 
-qemu-gdb: fs.img xv6.img .gdbinit
+qemu-gdb: fs.img xv6.img swap.img .gdbinit
 	@echo "*** Now run 'gdb'." 1>&2
 	$(QEMU) -serial mon:stdio $(QEMUOPTS) -S $(QEMUGDB)
 
-qemu-nox-gdb: fs.img xv6.img .gdbinit
+qemu-nox-gdb: fs.img xv6.img swap.img .gdbinit
 	@echo "*** Now run 'gdb'." 1>&2
 	$(QEMU) -nographic $(QEMUOPTS) -S $(QEMUGDB)
 
