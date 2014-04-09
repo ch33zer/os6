@@ -130,16 +130,25 @@ evict(char* pgsrc) {
 }
 
 void
-segflthandler() {
+segflthandler(int user) {
 	uint cr2 = PGROUNDDOWN(rcr2());
-	pte_t* pte = walkpgdir(proc->pgdir, (void*) cr2, 0);
-	if (pte) {
+	cprintf("Seg fault handler: cr2: %x user: %d, proc: %s\n", cr2,user, user?proc->name:"KERNEL");
+	pte_t* pte;
+	if (user) {
+		pte = walkpgdir(proc->pgdir, (void*) cr2, 0);
+	}
+	else {
+		pte = owner[v2p((void*)cr2)/PGSIZE];
+	}
+	if (pte && (*pte & PTE_AVAIL)) {
 		char* newmem = kalloc(1);
 		uint diskidx = ((uint)*pte) >> 12;
 		uint flags = ((uint)*pte) & 0xFFF;
 		flags |= PTE_P;
+		flags &= ~PTE_AVAIL;
 		readpg(newmem, diskidx * PGSIZE / BSIZE);
-		*pte = 0;
-		mappages(proc->pgdir, (void*)cr2, PGSIZE, v2p(newmem), flags);
+		*pte = flags | v2p(newmem);
+		own(newmem, pte);
+		invlpg(cr2);
 	}
 }

@@ -1350,6 +1350,7 @@ sbrktest(void)
     exit();
   wait();
 
+  printf(1,"Before big\n");
   // can one grow address space to something big?
 #define BIG (100*1024*1024)
   a = sbrk(0);
@@ -1361,7 +1362,7 @@ sbrktest(void)
   }
   lastaddr = (char*) (BIG-1);
   *lastaddr = 99;
-
+  printf(1,"After big\n");
   // can one de-allocate?
   a = sbrk(0);
   c = sbrk(-4096);

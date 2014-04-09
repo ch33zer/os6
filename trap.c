@@ -58,10 +58,11 @@ trap(struct trapframe *tf)
     break;
   case T_PGFLT:
     if (!(tf->err & PTE_P)) {
-      segflthandler();
+      segflthandler(tf->err & PTE_U);
       lapiceoi();
+      break;
     }
-    break;
+    goto def;
   case T_IRQ0 + IRQ_IDE2:
   case T_IRQ0 + IRQ_IDE:
     ideintr();
@@ -84,6 +85,7 @@ trap(struct trapframe *tf)
    
   //PAGEBREAK: 13
   default:
+    def:
     if(proc == 0 || (tf->cs&3) == 0){
       // In kernel, it must be our mistake.
       cprintf("unexpected trap %d from cpu %d eip %x (cr2=0x%x)\n",

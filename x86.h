@@ -9,6 +9,11 @@ inb(ushort port)
   return data;
 }
 
+static inline void invlpg(unsigned long addr)
+{
+   asm volatile("invlpg (%0)" ::"r" (addr) : "memory");
+}
+
 static inline void
 insl(int port, void *addr, int cnt)
 {

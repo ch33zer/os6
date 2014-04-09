@@ -124,7 +124,7 @@ void            wakeup(void*);
 void            yield(void);
 
 // swap.c
-void			segflthandler(void);
+void			segflthandler(int);
 void			swapinit(void);
 void			scnodeenqueue(void*);
 void			scnoderemove(void*);

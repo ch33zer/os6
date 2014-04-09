@@ -82,6 +82,7 @@ kfree(char *v, int swappable,pte_t* expected_pte)
       cprintf("PTE DIFFERS\n");
       diskslot = ((uint)*expected_pte) >> 12;
       freeswapfree(diskslot);
+      return;
     }
   }
   // Fill with junk to catch dangling refs.
@@ -133,7 +134,8 @@ kalloc(int swappable)
     else { //TODO MAKE SURE THAT THE DISK ISN'T FULL OF PAGES
       toevict = choosepageforeviction();
       ondiskindex = evict(toevict);
-      *(owner[v2p(toevict)/PGSIZE]) &= (0xFFF);
+      *(owner[v2p(toevict)/PGSIZE]) &= (0xFFF & (~PTE_P));
+      *(owner[v2p(toevict)/PGSIZE]) |= PTE_AVAIL;
       *(owner[v2p(toevict)/PGSIZE]) |= (ondiskindex<<12);
       disown(toevict);
       r = (struct run*)toevict;
