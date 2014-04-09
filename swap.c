@@ -63,6 +63,9 @@ choosepageforeviction(void) {
 		curr = schead.next;
 	}
 
+	schead.next = curr->next;
+	curr->next->prev = &schead;
+
 	return p2v(curr->index * PGSIZE); // This is the virtual address of the page that will be evicted
 }
 

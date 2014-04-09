@@ -68,7 +68,7 @@ kfree(char *v, int swappable,pte_t* expected_pte)
   uint diskslot;
 
   if((uint)v % PGSIZE || v < end || v2p(v) >= PHYSTOP)
-    panic("kfree");
+    panic("kfree2");
   if (swappable) {
     if (owner[idx] == PG_UNOWNED) {
       panic("Freeing an unowned page");

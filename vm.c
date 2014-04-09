@@ -265,7 +265,7 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     else if((*pte & PTE_P) != 0){
       pa = PTE_ADDR(*pte);
       if(pa == 0)
-        panic("kfree");
+        panic("kfree1");
       char *v = p2v(pa);
       kfree(v,1,pte);
       *pte = 0;

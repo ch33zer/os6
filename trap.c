@@ -57,10 +57,10 @@ trap(struct trapframe *tf)
     lapiceoi();
     break;
   case T_PGFLT:
-    if (tf->err & PTE_P) {
+    if (!(tf->err & PTE_P)) {
       segflthandler();
+      lapiceoi();
     }
-    lapiceoi();
     break;
   case T_IRQ0 + IRQ_IDE2:
   case T_IRQ0 + IRQ_IDE:
