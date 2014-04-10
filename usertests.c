@@ -1375,6 +1375,7 @@ sbrktest(void)
     printf(stdout, "sbrk deallocation produced wrong address, a %x c %x\n", a, c);
     exit();
   }
+  printf(1,"Realloc start\n");
 
   // can one re-allocate that page?
   a = sbrk(0);
@@ -1395,7 +1396,8 @@ sbrktest(void)
     printf(stdout, "sbrk downsize failed, a %x c %x\n", a, c);
     exit();
   }
-  
+  printf(1,"Kernel read start\n");
+
   // can we read the kernel's memory?
   for(a = (char*)(KERNBASE); a < (char*) (KERNBASE+2000000); a += 50000){
     ppid = getpid();
@@ -1411,7 +1413,7 @@ sbrktest(void)
     }
     wait();
   }
-
+  printf(1,"cleanup start\n");
   // if we run the system out of memory, does it clean up the last
   // failed allocation?
   if(pipe(fds) != 0){
@@ -1429,9 +1431,11 @@ sbrktest(void)
     if(pids[i] != -1)
       read(fds[0], &scratch, 1);
   }
+  printf(1,"freeup start\n");
   // if those failed allocations freed up the pages they did allocate,
   // we'll be able to allocate here
   c = sbrk(4096);
+  printf(1,"after srbk\n");
   for(i = 0; i < sizeof(pids)/sizeof(pids[0]); i++){
     if(pids[i] == -1)
       continue;

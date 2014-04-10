@@ -64,35 +64,35 @@ void
 kfree(char *v, int swappable,pte_t* expected_pte)
 {
   struct run *r;
-  uint idx = v2p(v)/PGSIZE;
+  uint vidx = v2p(v)/PGSIZE;
   uint diskslot;
 
+  if (swappable && PTE_ONDISK(*expected_pte)) {
+    diskslot = ((uint)*expected_pte) >> 12;
+    freeswapfree(diskslot);
+    return;
+  }
   if((uint)v % PGSIZE || v < end || v2p(v) >= PHYSTOP)
     panic("kfree2");
-  if (swappable) {
-    if (owner[idx] == PG_UNOWNED) {
-      panic("Freeing an unowned page");
-    }
-    pte_t* pte = owner[v2p(v)/PGSIZE];
-    if (expected_pte == pte) {
-      disown(v);
-      scnoderemove(v);
-    }
-    else {
-      cprintf("PTE DIFFERS\n");
-      diskslot = ((uint)*expected_pte) >> 12;
-      freeswapfree(diskslot);
-      return;
-    }
-  }
   // Fill with junk to catch dangling refs.
   memset(v, 1, PGSIZE);
+
 
   if(kmem.use_lock)
     acquire(&kmem.lock);
   r = (struct run*)v;
   r->next = kmem.freelist;
   kmem.freelist = r;
+  if (swappable) {
+    pte_t* pte = owner[vidx];
+    if (expected_pte == pte) { //The page is still in memory
+      disown(v);
+      scnoderemove(v);
+    }
+    else {
+      panic("kfree: Wrong owner!");
+    }
+  }
   if(kmem.use_lock)
     release(&kmem.lock);
 }
@@ -104,54 +104,43 @@ char*
 kalloc(int swappable)
 {
   struct run *r;
-  char* toevict;
-  uint ondiskindex;
-  if (!swappable) { //If this page is not eligible for swapping
-    if(kmem.use_lock)
-      acquire(&kmem.lock);
-    r = kmem.freelist;
-    if(r) {
-      kmem.freelist = r->next;
-      if (owner[v2p(r)/PGSIZE] != PG_UNOWNED) {
-        panic("Alloc an owned page");
-      }
+  if(kmem.use_lock)
+    acquire(&kmem.lock);
+  r = kmem.freelist;
+  if(r) {
+    kmem.freelist = r->next;
+    if (owner[v2p(r)/PGSIZE] != PG_UNOWNED) {
+      panic("Alloc an owned page");
     }
+  }
+  else {
     if(kmem.use_lock)
       release(&kmem.lock);
-    return (char*)r;
-  }
-  else { //If it is
+    r = (struct run*)swappage();
+    //cprintf("Kalloc: %p\n",r);
     if(kmem.use_lock)
       acquire(&kmem.lock);
-    r = kmem.freelist;
-    if(r) {
-      kmem.freelist = r->next;
-      if (owner[v2p(r)/PGSIZE] != PG_UNOWNED) {
-        panic("Alloc an owned page");
-      }
-      scnodeenqueue(r); //Page is eligible for swapping by being in the queue
-    }
-    else { //TODO MAKE SURE THAT THE DISK ISN'T FULL OF PAGES
-      toevict = choosepageforeviction();
-      ondiskindex = evict(toevict);
-      *(owner[v2p(toevict)/PGSIZE]) &= (0xFFF & (~PTE_P));
-      *(owner[v2p(toevict)/PGSIZE]) |= PTE_AVAIL;
-      *(owner[v2p(toevict)/PGSIZE]) |= (ondiskindex<<12);
-      disown(toevict);
-      r = (struct run*)toevict;
-    }
-    if(kmem.use_lock)
-      release(&kmem.lock);
-    return (char*)r;
   }
+  if (r && swappable) {
+    scnodeenqueue(r); //Page is eligible for swapping by being in the queue
+  }
+  if(kmem.use_lock)
+    release(&kmem.lock);
+  return (char*)r;
 }
 
 
 void
 own(char* va, pte_t* pte) {
+  if (owner[v2p(va)/PGSIZE] != PG_UNOWNED) {
+    panic("Attempt to own an owned page");
+  }
   owner[v2p(va)/PGSIZE] = pte;
 }
 
 void disown(char* va) {
+  if (owner[v2p(va)/PGSIZE] == PG_UNOWNED) {
+    panic("Attempt to disown an unowned page");
+  }
   owner[v2p(va)/PGSIZE] = PG_UNOWNED;
 }

@@ -205,6 +205,7 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, addr+i, 0)) == 0)
       panic("loaduvm: address should exist");
+    unswappage(pte);
     pa = PTE_ADDR(*pte);
     if(sz - i < PGSIZE)
       n = sz - i;
@@ -262,6 +263,9 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     pte = walkpgdir(pgdir, (char*)a, 0);
     if(!pte)
       a += (NPTENTRIES - 1) * PGSIZE;
+    else if (PTE_ONDISK(*pte)) {
+      kfree(0,1,pte);//Will free disk resources
+    }
     else if((*pte & PTE_P) != 0){
       pa = PTE_ADDR(*pte);
       if(pa == 0)
@@ -325,11 +329,11 @@ copyuvm(pde_t *pgdir, uint sz)
       if (!PTE_ONDISK(*pte))
         panic("copyuvm: page not present");
     }
-    pa = PTE_ADDR(*pte);
-    flags = PTE_FLAGS(*pte);
     if((mem = kalloc(1)) == 0)
       goto bad;
-    cprintf("memove %p\n",p2v(pa));
+    unswappage(pte); //Ensure page is in memory
+    pa = PTE_ADDR(*pte);
+    flags = PTE_FLAGS(*pte);
     memmove(mem, (char*)p2v(pa), PGSIZE);
     if(mappages(d, (void*)i, PGSIZE, v2p(mem), flags) < 0)
       goto bad;

@@ -193,7 +193,7 @@ iderw(struct buf *b)
 }
 
 void writepg(char* src, uint block) {
-  cprintf("Starting swap write\n");
+  //cprintf("Starting swap write src %p block %d\n", src, block);
   int status = getstatusport(SWAPDEV);
   int baseaddr = getbaseport(SWAPDEV);
   idewait(0,SWAPDEV);
@@ -208,7 +208,7 @@ void writepg(char* src, uint block) {
 }
 
 void readpg(char* dest, uint block) {
-  cprintf("Starting swap read dest %p block %d\n", dest, block);
+  //cprintf("Starting swap read dest %p block %d\n", dest, block);
   int status = getstatusport(SWAPDEV);
   int baseaddr = getbaseport(SWAPDEV);
   idewait(0,SWAPDEV);

@@ -132,6 +132,8 @@ struct freeswapnode*	freeswapalloc(void);
 void			freeswapfree(uint);
 char*			choosepageforeviction(void);
 uint			evict(char*);
+char*			swappage(void);
+int 			unswappage(pte_t*);
 
 // swtch.S
 void            swtch(struct context**, struct context*);
