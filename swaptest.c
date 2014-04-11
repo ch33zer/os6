@@ -30,6 +30,7 @@ main(int argc, char *argv[])
 	printf(1,"Next malloc should cause swaps\n");
 
 	malloc(4096);
+
 	printf(1,"Exitting\n");
 	exit(); //Everything is free en masse once exit is called
 }

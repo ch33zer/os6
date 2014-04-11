@@ -12,7 +12,7 @@
 
 void freerange(void *vstart, void *vend);
 extern char end[]; // first address after kernel loaded from ELF file
-pte_t* owner[MEMORYPGCAPACITY];
+pte_t* owner[MEMORYPGCAPACITY]; //Tracking all PTEs in memory.
 
 
 
@@ -60,6 +60,16 @@ freerange(void *vstart, void *vend)
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
+
+/*
+	Assignment 6:
+		kfree now takes a swappable parameter,
+		as some pages should not be swapped (such as the page directories).
+
+		It also takes an expected_pte parameter, which is used
+		to determine whether or not the page currently in memory
+		is the one that you're attempting to free.
+*/
 void
 kfree(char *v, int swappable,pte_t* expected_pte)
 {
@@ -67,6 +77,7 @@ kfree(char *v, int swappable,pte_t* expected_pte)
   uint vidx = v2p(v)/PGSIZE;
   uint diskslot;
 
+	// In disk; just need to free swap space.
   if (swappable && PTE_ONDISK(*expected_pte)) {
     diskslot = ((uint)*expected_pte) >> 12;
     freeswapfree(diskslot);
@@ -83,6 +94,8 @@ kfree(char *v, int swappable,pte_t* expected_pte)
   r = (struct run*)v;
   r->next = kmem.freelist;
   kmem.freelist = r;
+
+	//Need to check swap.
   if (swappable) {
     pte_t* pte = owner[vidx];
     if (expected_pte == pte) { //The page is still in memory
@@ -113,6 +126,7 @@ kalloc(int swappable)
       panic("Alloc an owned page");
     }
   }
+	// Out of memory, need to evict.
   else {
     if(kmem.use_lock)
       release(&kmem.lock);
@@ -128,7 +142,6 @@ kalloc(int swappable)
     release(&kmem.lock);
   return (char*)r;
 }
-
 
 void
 own(char* va, pte_t* pte) {

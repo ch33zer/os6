@@ -8,13 +8,15 @@
 #include "proc.h"
 #include "swap.h"
 
+/*  Sentinel nodes pointing to beginning and end of the
+		second chance queue of evict-candidate pages. */
 static struct scnode schead;
 static struct scnode sctail;
-
 static struct scnode nodememory[MEMORYPGCAPACITY];
 
+/*  Parallel to kmem.freelist for keeping track of free
+		pages on the swap drive */
 static struct freeswapnode* swaphead;
-
 static struct freeswapnode swapmemory[SWAPPGCAPACITY];
 
 void
@@ -39,14 +41,17 @@ swapinit() {
 	sctail.prev = &schead;
 }
 
+//	Check if accessed
 int isreferenced(uint idx) {
 	return *(owner[idx]) & PTE_A;
 }
 
+//	Unset accessed bit.
 void setunreferenced(uint idx) {
 	*(owner[idx]) &= ~(PTE_A);
 }
 
+//	Check scqueue (second chance queue) for a page to evict.
 char*
 choosepageforeviction(void) {
 	struct scnode* curr = schead.next;
@@ -71,9 +76,11 @@ choosepageforeviction(void) {
 
 	curr->next = 0;
 	curr->prev = 0;
-	return p2v(curr->index * PGSIZE); // This is the virtual address of the page that will be evicted
+	//cprintf("Evict 0x%x\n",owner[curr->index]);
+	return p2v(curr->index * PGSIZE); // Returns address in kernel space
 }
 
+//	Adds evict candidates to back of queue.
 void
 scnodeenqueue(void* va) {
 	uint idx = v2p(va)/PGSIZE;
@@ -94,6 +101,11 @@ scnodeenqueue(void* va) {
 	sctail.prev = slot;
 }
 
+/*
+ Given an evictable page, remove it from the queue.
+ Used when kfree is called, so that pages are not
+ evicted after being freed.
+*/
 void
 scnoderemove(void* va) {
 	uint idx = v2p(va)/PGSIZE;
@@ -112,6 +124,7 @@ scnoderemove(void* va) {
 	slot->prev = 0;
 }
 
+// Add node at index back to the freelist.
 void
 freeswapfree(uint index) {
 	struct freeswapnode* node;
@@ -126,6 +139,7 @@ freeswapfree(uint index) {
 	swaphead = node;
 }
 
+// Grab a free spot in swap.
 struct freeswapnode*
 getfreenode() {
 	if (!swaphead) {
@@ -138,6 +152,10 @@ getfreenode() {
 	return node;
 }
 
+/*
+	Check if the page is in memory, 
+	Else read it back to memory.
+*/
 int 
 unswappage(pte_t* pte) {
 	if (!PTE_ONDISK(*pte)) {
@@ -157,6 +175,9 @@ unswappage(pte_t* pte) {
 	return 1;
 }
 
+/*
+	Get a free page in memory, evict if necessary. 
+*/
 char*
 swappage(void) {
 	char* toevict = choosepageforeviction();
@@ -187,6 +208,12 @@ swappage(void) {
 	return toevict;
 }
 
+/*
+	Called from trap.c.
+	Will write back a page to memory if the page's AVAIL bit
+	(which we arbitrarily designated as meaning "swapped") 
+	is set.
+*/
 void
 segflthandler(int user) {
 	uint cr2 = PGROUNDDOWN(rcr2());

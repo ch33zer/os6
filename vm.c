@@ -205,7 +205,7 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, addr+i, 0)) == 0)
       panic("loaduvm: address should exist");
-    unswappage(pte);
+    unswappage(pte); // Make sure page isn't actually swapped out.
     pa = PTE_ADDR(*pte);
     if(sz - i < PGSIZE)
       n = sz - i;
