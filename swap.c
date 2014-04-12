@@ -216,9 +216,6 @@ swappage(void) {
 		scnodeenqueue(toevict); // The page is still in memory
 		return 0;
 	}
-	if (toevict == (char*) 0x81c8f000) {
-		cprintf("evicting bad addr\n");
-	}
 	//cprintf("Evicting page %p!\n",toevict);
 	uint ondiskindex = node->index;
 	uint oidx =v2p(toevict)/PGSIZE;
