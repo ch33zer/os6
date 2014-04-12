@@ -7,17 +7,20 @@
 #include "x86.h"
 #include "proc.h"
 #include "swap.h"
+#include "spinlock.h"
 
 /*  Sentinel nodes pointing to beginning and end of the
 		second chance queue of evict-candidate pages. */
 static struct scnode schead;
 static struct scnode sctail;
 static struct scnode nodememory[MEMORYPGCAPACITY];
+static struct spinlock sclock;
 
 /*  Parallel to kmem.freelist for keeping track of free
 		pages on the swap drive */
 static struct freeswapnode* swaphead;
 static struct freeswapnode swapmemory[SWAPPGCAPACITY];
+static struct spinlock freeswaplock;
 
 void
 swapinit() {
@@ -39,8 +42,16 @@ swapinit() {
 	// Setup second chance queue
 	schead.next = &sctail;
 	sctail.prev = &schead;
+
+	// Initialize locks
+	initlock(&sclock, "scqueue");
+	initlock(&freeswaplock,"freeswap");
+	
+
 }
 
+// isreferenced and setunreferenced are called
+// with sclock held in choosepageforeviction.
 //	Check if accessed
 int isreferenced(uint idx) {
 	return *(owner[idx]) & PTE_A;
@@ -54,6 +65,7 @@ void setunreferenced(uint idx) {
 //	Check scqueue (second chance queue) for a page to evict.
 char*
 choosepageforeviction(void) {
+	acquire(&sclock);
 	struct scnode* curr = schead.next;
 	if (!curr || curr == &sctail) {
 		panic("no pages to evict!");
@@ -76,6 +88,7 @@ choosepageforeviction(void) {
 
 	curr->next = 0;
 	curr->prev = 0;
+	release(&sclock);
 	//cprintf("Evict 0x%x\n",owner[curr->index]);
 	return p2v(curr->index * PGSIZE); // Returns address in kernel space
 }
@@ -83,6 +96,8 @@ choosepageforeviction(void) {
 //	Adds evict candidates to back of queue.
 void
 scnodeenqueue(void* va) {
+
+	acquire(&sclock);
 	uint idx = v2p(va)/PGSIZE;
 	if (idx <0 || idx >= MEMORYPGCAPACITY) {
 		panic("scnodenequeue invalid slot idx");
@@ -99,6 +114,7 @@ scnodeenqueue(void* va) {
 	slot->next = &sctail;
 	slot->prev = sctail.prev;
 	sctail.prev = slot;
+	release(&sclock);
 }
 
 /*
@@ -108,6 +124,7 @@ scnodeenqueue(void* va) {
 */
 void
 scnoderemove(void* va) {
+	acquire(&sclock);
 	uint idx = v2p(va)/PGSIZE;
 	if (idx <0 || idx >= MEMORYPGCAPACITY) {
 		panic("scnodenequeue invalid slot idx");
@@ -122,11 +139,13 @@ scnoderemove(void* va) {
 	next->prev = prev;
 	slot->next = 0;
 	slot->prev = 0;
+	release(&sclock);
 }
 
 // Add node at index back to the freelist.
 void
 freeswapfree(uint index) {
+	acquire(&freeswaplock);
 	struct freeswapnode* node;
 	node = &(swapmemory[index]);
 	if (index < 0 || index >= SWAPPGCAPACITY) {
@@ -137,24 +156,32 @@ freeswapfree(uint index) {
 	}
 	node->next = swaphead;
 	swaphead = node;
+	
+	release(&freeswaplock);
 }
 
 // Grab a free spot in swap.
 struct freeswapnode*
 getfreenode() {
+	acquire(&freeswaplock);
 	if (!swaphead) {
 		//Out of swap pages
+		release(&freeswaplock);
 		return 0;
 	}
+	
 	struct freeswapnode* node = swaphead;
 	swaphead = swaphead->next;
 	node->next = 0;
+	release(&freeswaplock);
 	return node;
 }
 
 /*
 	Check if the page is in memory, 
 	Else read it back to memory.
+
+	Ownerlock should be called. 
 */
 int 
 unswappage(pte_t* pte) {

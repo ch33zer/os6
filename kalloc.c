@@ -14,6 +14,13 @@ void freerange(void *vstart, void *vend);
 extern char end[]; // first address after kernel loaded from ELF file
 pte_t* owner[MEMORYPGCAPACITY]; //Tracking all PTEs in memory.
 
+/*
+	Owner lock needs to be called over the DURATION the
+	PTE is being modified/read -- it is not enough to call it
+	in own or disown
+*/
+struct spinlock ownerlock;
+
 
 
 struct run {
@@ -97,6 +104,7 @@ kfree(char *v, int swappable,pte_t* expected_pte)
 
 	//Need to check swap.
   if (swappable) {
+		acquire(&ownerlock);
     pte_t* pte = owner[vidx];
     if (expected_pte == pte) { //The page is still in memory
       disown(v);
@@ -105,6 +113,7 @@ kfree(char *v, int swappable,pte_t* expected_pte)
     else {
       panic("kfree: Wrong owner!");
     }
+		release(&ownerlock);
   }
   if(kmem.use_lock)
     release(&kmem.lock);
@@ -120,6 +129,7 @@ kalloc(int swappable)
   if(kmem.use_lock)
     acquire(&kmem.lock);
   r = kmem.freelist;
+
   if(r) {
     kmem.freelist = r->next;
     if (owner[v2p(r)/PGSIZE] != PG_UNOWNED) {
@@ -130,18 +140,23 @@ kalloc(int swappable)
   else {
     if(kmem.use_lock)
       release(&kmem.lock);
+		acquire(&ownerlock);
     r = (struct run*)swappage();
+		release(&ownerlock);
     //cprintf("Kalloc: %p\n",r);
     if(kmem.use_lock)
       acquire(&kmem.lock);
   }
+
   if (r && swappable) {
     scnodeenqueue(r); //Page is eligible for swapping by being in the queue
   }
   if(kmem.use_lock)
     release(&kmem.lock);
+
   return (char*)r;
 }
+
 
 void
 own(char* va, pte_t* pte) {

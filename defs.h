@@ -72,6 +72,7 @@ void            kinit1(void*, void*);
 void            kinit2(void*, void*);
 void			own(char*, pte_t*);
 void			disown(char*);
+extern struct spinlock ownerlock;
 
 // kbd.c
 void            kbdintr(void);

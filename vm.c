@@ -8,6 +8,7 @@
 #include "elf.h"
 
 extern char data[];  // defined by kernel.ld
+extern struct spinlock ownerlock; //kalloc.c
 pde_t *kpgdir;  // for use in scheduler()
 struct segdesc gdt[NSEGS];
 
@@ -189,7 +190,9 @@ inituvm(pde_t *pgdir, char *init, uint sz)
   memset(mem, 0, PGSIZE);
   mappages(pgdir, 0, PGSIZE, v2p(mem), PTE_W|PTE_U);
   memmove(mem, init, sz);
+	acquire(&ownerlock);
   own(mem, walkpgdir(pgdir,0,0));
+	release(&ownerlock);
 }
 
 // Load a program segment into pgdir.  addr must be page-aligned
@@ -205,7 +208,9 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, addr+i, 0)) == 0)
       panic("loaduvm: address should exist");
+		acquire(&ownerlock);
     unswappage(pte); // Make sure page isn't actually swapped out.
+		release(&ownerlock);
     pa = PTE_ADDR(*pte);
     if(sz - i < PGSIZE)
       n = sz - i;
@@ -240,7 +245,9 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     }
     memset(mem, 0, PGSIZE);
     mappages(pgdir, (char*)a, PGSIZE, v2p(mem), PTE_W|PTE_U);
+		acquire(&ownerlock);
     own(mem,walkpgdir(pgdir,(char*)a,0));
+		release(&ownerlock);
   }
   return newsz;
 }
@@ -265,6 +272,7 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       a += (NPTENTRIES - 1) * PGSIZE;
     else if (PTE_ONDISK(*pte)) {
       kfree(0,1,pte);//Will free disk resources
+										 //Will acquire ownerlock
     }
     else if((*pte & PTE_P) != 0){
       pa = PTE_ADDR(*pte);
@@ -337,7 +345,9 @@ copyuvm(pde_t *pgdir, uint sz)
     memmove(mem, (char*)p2v(pa), PGSIZE);
     if(mappages(d, (void*)i, PGSIZE, v2p(mem), flags) < 0)
       goto bad;
+		acquire(&ownerlock);
     own(mem,walkpgdir(d,(void*)i,0));
+		release(&ownerlock);
   }
   return d;
 

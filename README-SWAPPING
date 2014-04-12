@@ -1,0 +1,164 @@
+David Blaise Watson dblaisewatson@gmail.com
+Max Lee mlee177@jhu.edu
+600.318
+Assignment 6
+
+Part 1
+	Memory is managed in xv6 by using virtual memory. RAM, or physical memory
+	is divided into chunks of PGSIZE (4096 bytes), which are then allocated
+	to processes using page tables.
+	
+	Page tables are a way of keeping track of which physical addresses
+	are associated with a given process's virtual address. These addresses 
+	are aligned in 4096 byte chunks, and are mapped using a two level tree.
+	
+	A process's page directory (proc->pgdir) points to the beginning of
+	a large array of 2^20 Page Table Entries (PTE) objects that are divided
+	up into a 20 bit chunk called the "Physical Page Number" (PPN) and 12
+	bits that contain flag information. Given a virtual address of 32 bits, the
+	first 10 bits are used to traverse the Page Directory containing 2^10 or
+	1024 PTEs whose PPN doesn't actually point to a physical page, but to a
+	Page Table containing 2^10 PTEs. You use the second 10 bits of the virtual
+	address to traverse the Page Table, and you finally get a PTE whose PPN
+	maps to a physical page, and the last 12 bits of the virtual address
+	can be used to get to the exact byte location the information you want is
+	located. 
+	
+	Flag information is contained in the PTE, and contains information about 
+	whether the page table is read-writable or just readable, whether the page
+	can be accessed by the user or just the kernel, and whether the page is 
+	actually present, i.e. valid and in physical memory.
+	
+	The last bit is what is mainly important to us in this assignment. 
+	Currently, pages are only not present if they haven't been allocated.
+	However, this changes with swapping -- a page's present bit is cleared
+	also when they are swapped to disk. Thus, we need to be able to determine
+	whether a page fault occurred because a page was never allocated, or 
+	because the page has been swapped out.
+	
+	Part 2: 
+	At the moment, xv6 does not have a disk available for us to use as swap
+	space. Adding a new drive involves making changes to Makefile to support
+	a new swap.img, as fs.img is used for the OS's filesystem already, along
+	with making the appropriate changes in ide.c to so that xv6 can handle
+	multiple drives.
+
+	fs.img is created using dd, so we can do the same for swap.img, and we can
+	make qemu assign it to a drive.
+	
+	We see that xv6 checks 0x1F* for various information abut the primary ATA
+	bus. Reading documentation and http://wiki.osdev.org/ATA_PIO_Mode tells us
+	that the secondary ATA bus that the other bus is located on 0x17*, meaning 
+	that any operations involving the secondary bus needs to access a different
+	set of bytes, and that the ide driver needs to be able to freely switch
+	between these values to access each drive.
+	
+	Part 3: 
+	Swapping will require the addition of a few data structures:
+	-we need a way to keep track of the pages that have been checked out, and
+	to whom/where they belonged or were before they were swapped out to disk.
+	
+	-We also need a way of keeping track of candidate pages for swapping out.
+	
+	-Finally, we need a way of keeping track of free places that we can swap
+	stuff into on disk. 
+	
+	Since we're implementing a second chance FIFO, we're going to need a queue.
+	This queue needs to contain some reference to an evictable page. An
+	address to a PTE should work, as it is unique to a process and also contains
+	information about the physical page itself via the PPN and flags.
+	
+	Borrowing ideas from how free memory is handled in xv6, we can use a
+	linked-list to handle free swap pages, much like how kmem.freelist works.
+	
+	How will we remember where in disk the data has been swapped into? Since
+	the physical page in memory is no longer guaranteed to be containing the
+	right information, we can use the PPN to instead store the block/index at
+	which its page data has been swapped into. 
+	
+	We also need to be able to distinguish pages that are simply swapped and
+	not in memory, versus pages that actually haven't been allocated, i.e.,
+	PTE_P does not give us enough information. We will instead use one of the 
+	free bits to notate whether or not a page has been swapped. 
+	
+	Because the disk driver relies on interrupts to make reads and writes happen,
+	we needed a function that could simply read and write entire pages without
+	relying on interrupts. These will need to be added to ide.c
+	
+	Finally, the trap handler needs to call a new function to restore pages
+	from disk to memory, and kill the process if that's not possible. Admittedly,
+	killing the process isn't the best behavior, but it is what usertests's sbrk
+	test assumes. 
+	
+Log Part 2:
+	We ended up	having to give this new file to the fourth drive, as the third
+	drive (hdc) if available is apparently assigned a virtual cd drive
+	automatically. While there were some piazza posts about getting around this,
+	we simply opted to use hdd instead. 
+	
+Log Part 3
+	While we were hoping to have the changes be contained to kalloc.c, ide.c, and
+	a new file called swap.c, it became readily apparent that vm.c also needed	
+	a few key changes. The main changes are making sure that pages created and
+	allocated were also added to the owner's table, in addition to making sure 
+	that the assumptions made by certain functions (primarily, that a page exists
+	and is located in memory when the function is called) are not made false
+	by the new swapping system.
+	
+List of changes;
+	Addition of swap.c
+		Second Chance FIFO (queue): nodememory.
+			Struct for queue: scnode.
+		List of free swap: swapmemory
+			Struct for list: freeswapnode
+		
+		Handling scnodes:
+			choosepageforeviction
+				Chooses page for eviction, rotating still-referenced pages to 
+				the back until it reaches a page with its reference bit cleared.
+			scnodeenqueue
+				Stores a new scnode in front, called by kalloc.
+			scnoderemove
+				Removes an scnode from the queue if it exists, called by kfree.
+		Handling freeswapnodes:
+			freeswapfree
+				Adds a node to the freelist (called when swap is rewritten to memory).
+			getfreenode
+				Gets the next free swap area available to write to.
+		Other:
+			unswappage
+				Makes "this page is in memory" assumption true for many vm.c methods.
+			swappage
+				Called by kalloc, gets an available page, evicting if necessary.
+			segflthandler
+				Called by the trap handler, writes page in swap to memory, killing
+				the process if it can't.
+	Changes to kalloc.c
+		Owner data structure for tracking current/active PA -> PTE mapping.
+		kfree
+			If swappable and in disk, just free up the swap space.
+			If swappable and still in memory, remove from owner data structure
+			and remove from nodememory (scnode data structure).
+			Add page to freelist like normal.
+		kalloc
+			If freelist still contains free pages, use those.
+			Else, evict a page and use that.
+			Add the scnode to the nodememory data structure in case we need
+			to evict it later. 
+		own, diown
+			Helper methods for owner data structure.
+	Changes to vm.c
+		Made sure functions maintained assumptions about pages using unswappage
+		and own/disown.
+	Changes to ide.c
+		Sweeping changes to modularize the code and help it support two buses.
+		writepg, readpg
+			Methods to read entire pages without relying on interrupts.
+	Changes to trap.c
+		Checks page faults and calls segflthandler in swap.c.
+	Changes to Makefile
+		Added support for swap.img and additional drives.
+		Added more definitions to define new SWAP and MAIN memory amounts.
+			PHYSTOP is now based on TOTALMAINMEMORY
+	misc additions to defs.h, mmu.h 
+			

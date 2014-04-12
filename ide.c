@@ -194,6 +194,7 @@ iderw(struct buf *b)
 
 // Write whole page without interrupts.
 void writepg(char* src, uint block) {
+	acquire(&idelock);
   //cprintf("Starting swap write src %p block %d\n", src, block);
   int status = getstatusport(SWAPDEV);
   int baseaddr = getbaseport(SWAPDEV);
@@ -206,10 +207,12 @@ void writepg(char* src, uint block) {
   outb(baseaddr + IDE_PORT_DRIVE, 0xe0 | ((SWAPDEV&1)<<4) | ((block>>24)&0x0f));
   outb(baseaddr + IDE_PORT_COMMAND, IDE_CMD_WRITE);
   outsl(baseaddr + IDE_PORT_DATA, src, PGSIZE/4);
+	release(&idelock);
 }
 
 // Read whole page without interrupts
 void readpg(char* dest, uint block) {
+	acquire(&idelock);
   //cprintf("Starting swap read dest %p block %d\n", dest, block);
   int status = getstatusport(SWAPDEV);
   int baseaddr = getbaseport(SWAPDEV);
@@ -223,4 +226,5 @@ void readpg(char* dest, uint block) {
   outb(baseaddr + IDE_PORT_COMMAND, IDE_CMD_READ);
   idewait(0,SWAPDEV);
   insl(getbaseport(SWAPDEV) + IDE_PORT_DATA, dest, PGSIZE/4);
+	release(&idelock);
 }
